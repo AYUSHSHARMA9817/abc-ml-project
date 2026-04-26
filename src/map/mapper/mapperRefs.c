@@ -530,6 +530,37 @@ float Map_MappingGetArea( Map_Man_t * pMan )
     return Area;
 }
 
+/**Function*************************************************************
+
+  Synopsis    [Counts cuts used in the final mapped cover.]
+
+  Description []
+               
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+int Map_MappingCountUsedCuts( Map_Man_t * pMan )
+{
+    Map_Node_t * pNode;
+    int Count = 0;
+    int i;
+    for ( i = 0; i < pMan->vMapObjs->nSize; i++ )
+    {
+        pNode = pMan->vMapObjs->pArray[i];
+        if ( pNode->nRefAct[2] == 0 )
+            continue;
+        if ( !Map_NodeIsAnd(pNode) )
+            continue;
+        if ( pNode->pCutBest[0] && (pNode->nRefAct[0] > 0 || pNode->pCutBest[1] == NULL) )
+            Count++;
+        if ( pNode->pCutBest[1] && (pNode->nRefAct[1] > 0 || pNode->pCutBest[0] == NULL) )
+            Count++;
+    }
+    return Count;
+}
+
 
 ////////////////////////////////////////////////////////////////////////
 ///                       END OF FILE                                ///
@@ -537,4 +568,3 @@ float Map_MappingGetArea( Map_Man_t * pMan )
 
 
 ABC_NAMESPACE_IMPL_END
-

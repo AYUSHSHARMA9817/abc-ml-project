@@ -18,7 +18,7 @@
 
 #include "mapperInt.h"
 //#include "resm.h"
-
+#include <stdlib.h>
 ABC_NAMESPACE_IMPL_START
 
 
@@ -49,11 +49,18 @@ ABC_NAMESPACE_IMPL_START
 ***********************************************************************/
 int Map_Mapping( Map_Man_t * p )
 {
+    char *env = getenv("ML_MODE");
+    if (env) g_mode = atoi(env);
+    else g_mode = 0;  // default
+    g_totalCuts = 0;
+    g_totalNodes = 0;
+    
     int fShowSwitching         = 0;
     int fUseAreaFlow           = 1;
     int fUseExactArea          = !p->fSwitching;
     int fUseExactAreaWithPhase = !p->fSwitching;
     abctime clk;
+    abctime clkTotal = Abc_Clock();
 
     //////////////////////////////////////////////////////////////////////
     // perform pre-mapping computations
@@ -66,13 +73,20 @@ int Map_Mapping( Map_Man_t * p )
     clk = Abc_Clock();
     Map_MappingCuts( p );
     p->timeCuts = Abc_Clock() - clk;
+
+    
     // derive the truth tables 
     clk = Abc_Clock();
     Map_MappingTruths( p );
     p->timeTruth = Abc_Clock() - clk;
     //////////////////////////////////////////////////////////////////////
 //ABC_PRT( "Truths", Abc_Clock() - clk );
-
+    if(g_mode > 0){
+        clk = Abc_Clock();
+        Map_CutFilter_ML(p);
+        p->timeCuts = Abc_Clock() - clk;
+    }
+    abctime clkPostML = Abc_Clock();
     //////////////////////////////////////////////////////////////////////
     // compute the minimum-delay mapping
     clk = Abc_Clock();
@@ -83,6 +97,7 @@ int Map_Mapping( Map_Man_t * p )
     // compute the references and collect the nodes used in the mapping
     Map_MappingSetRefs( p );
     p->AreaBase = Map_MappingGetArea( p );
+    p->AreaFinal = p->AreaBase;
 if ( p->fVerbose )
 {
 printf( "Delay    : %s = %8.2f  Flow = %11.1f  Area = %11.1f  %4.1f %%   ", 
@@ -95,6 +110,9 @@ ABC_PRT( "Time", p->timeMatch );
 
     if ( !p->fAreaRecovery )
     {
+        p->timeTotal = Abc_Clock() - clkTotal;
+        p->time1 = Abc_Clock() - clkPostML;
+        PrintCutStats( p );
         if ( p->fVerbose )
             Map_MappingPrintOutputArrivals( p );
         return 1;
@@ -223,9 +241,11 @@ ABC_PRT( "Time", Abc_Clock() - clk );
     //////////////////////////////////////////////////////////////////////
 
     // print the arrival times of the latest outputs
+    p->timeTotal = Abc_Clock() - clkTotal;
+    p->time1 = Abc_Clock() - clkPostML;
+    PrintCutStats( p );
     if ( p->fVerbose )
         Map_MappingPrintOutputArrivals( p );
     return 1;
 }
 ABC_NAMESPACE_IMPL_END
-

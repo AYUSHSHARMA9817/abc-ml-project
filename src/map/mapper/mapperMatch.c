@@ -23,6 +23,38 @@
 
 ABC_NAMESPACE_IMPL_START
 
+static int Map_MatchCompareCoverage( Map_Match_t * pM1, Map_Match_t * pM2 )
+{
+    if ( pM1->pSuperBest == NULL )
+        return pM2->pSuperBest != NULL;
+    if ( pM2->pSuperBest == NULL )
+        return 0;
+
+    /*
+     * In ML mode we want to reduce the number of selected cuts in the final
+     * mapping without disturbing QoR. When the primary optimization terms are
+     * tied, prefer the supergate that covers more internal logic.
+     */
+    if ( g_mode > 0 )
+    {
+        if ( pM1->pSuperBest->nGates < pM2->pSuperBest->nGates )
+            return 1;
+        if ( pM1->pSuperBest->nGates > pM2->pSuperBest->nGates )
+            return 0;
+        if ( pM1->pSuperBest->nFanins < pM2->pSuperBest->nFanins )
+            return 1;
+        if ( pM1->pSuperBest->nFanins > pM2->pSuperBest->nFanins )
+            return 0;
+        return 0;
+    }
+
+    if ( pM1->pSuperBest->nFanins < pM2->pSuperBest->nFanins )
+        return 0;
+    if ( pM1->pSuperBest->nFanins > pM2->pSuperBest->nFanins )
+        return 1;
+    return 0;
+}
+
 
 /*
     A potential improvement:
@@ -95,13 +127,7 @@ int Map_MatchCompare( Map_Man_t * pMan, Map_Match_t * pM1, Map_Match_t * pM2, in
             return 0;
         if ( pM1->pSuperBest->nFanLimit < pM2->pSuperBest->nFanLimit )
             return 1;
-        // compare the number of leaves
-        if ( pM1->pSuperBest->nFanins < pM2->pSuperBest->nFanins )
-            return 0;
-        if ( pM1->pSuperBest->nFanins > pM2->pSuperBest->nFanins )
-            return 1;
-        // otherwise prefer the old cut
-        return 0;
+        return Map_MatchCompareCoverage( pM1, pM2 );
     }
     else
     {
@@ -135,13 +161,7 @@ int Map_MatchCompare( Map_Man_t * pMan, Map_Match_t * pM1, Map_Match_t * pM2, in
             return 0;
         if ( pM1->pSuperBest->nFanLimit < pM2->pSuperBest->nFanLimit )
             return 1;
-        // compare the number of leaves
-        if ( pM1->pSuperBest->nFanins < pM2->pSuperBest->nFanins )
-            return 0;
-        if ( pM1->pSuperBest->nFanins > pM2->pSuperBest->nFanins )
-            return 1;
-        // otherwise prefer the old cut
-        return 0;
+        return Map_MatchCompareCoverage( pM1, pM2 );
     }
 }
 
@@ -661,4 +681,3 @@ int Map_MappingMatches( Map_Man_t * p )
 ///                       END OF FILE                                ///
 ////////////////////////////////////////////////////////////////////////
 ABC_NAMESPACE_IMPL_END
-

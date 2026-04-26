@@ -357,9 +357,17 @@ struct Map_HashEntryStruct_t_
 ///                     FUNCTION DEFINITIONS                         ///
 ////////////////////////////////////////////////////////////////////////
 
+
 /*=== mapperCanon.c =============================================================*/
 /*=== mapperCut.c ===============================================================*/
 extern void              Map_MappingCuts( Map_Man_t * p );
+extern int               Map_MappingCountAllCuts( Map_Man_t * pMan );
+extern void              PrintCutStats( Map_Man_t * p ); 
+extern int               g_mode;
+extern int               g_totalCuts;
+extern int               g_totalNodes;
+extern void              Map_CutFilter_ML( Map_Man_t * p);
+extern int               Map_MappingCountUsedCuts( Map_Man_t * pMan );
 /*=== mapperCutUtils.c ===============================================================*/
 extern Map_Cut_t *       Map_CutAlloc( Map_Man_t * p );
 extern void              Map_CutFree( Map_Man_t * p, Map_Cut_t * pCut );
