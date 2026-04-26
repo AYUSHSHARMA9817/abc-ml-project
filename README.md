@@ -1,125 +1,288 @@
-[![.github/workflows/build-posix.yml](https://github.com/berkeley-abc/abc/actions/workflows/build-posix.yml/badge.svg)](https://github.com/berkeley-abc/abc/actions/workflows/build-posix.yml)
-[![.github/workflows/build-windows.yml](https://github.com/berkeley-abc/abc/actions/workflows/build-windows.yml/badge.svg)](https://github.com/berkeley-abc/abc/actions/workflows/build-windows.yml)
-[![.github/workflows/build-posix-cmake.yml](https://github.com/berkeley-abc/abc/actions/workflows/build-posix-cmake.yml/badge.svg)](https://github.com/berkeley-abc/abc/actions/workflows/build-posix-cmake.yml)
+Here is a **clean, professional README.md** for your project, combining:
 
-# ABC: System for Sequential Logic Synthesis and Formal Verification
+* your **report (ML-guided cut filtering)**
+* expected **assignment requirements**
+* and a **production-style ML + systems documentation structure**
 
-ABC is always changing but the current snapshot is believed to be stable.
+You can directly copy this into your repo.
 
-## ABC fork with new features
+---
 
-Here is a [fork](https://github.com/yongshiwo/abc.git) of ABC containing Agdmap, a novel technology mapper for LUT-based FPGAs.  Agdmap is based on a technology mapping algorithm with adaptive gate decomposition [1]. It is a cut enumeration based mapping algorithm with bin packing for simultaneous wide gate decomposition, which is a patent pending technology.
+# 🚀 ML-Guided ASIC Technology Mapping (ABC Integration)
 
-The mapper is developed and maintained by Longfei Fan and Prof. Chang Wu at Fudan University in Shanghai, China.  The experimental results presented in [1] indicate that Agdmap can substantially improve area (by 10% or more) when compared against the best LUT mapping solutions in ABC, such as command "if".
+## 📌 Overview
 
-The source code is provided for research and evaluation only. For commercial usage, please contact Prof. Chang Wu at wuchang@fudan.edu.cn.
+This project introduces a **Machine Learning–guided cut selection strategy** for ASIC technology mapping using the ABC synthesis framework. The goal is to **reduce the number of candidate cuts during mapping** while preserving **area-delay Quality of Results (QoR)**.
 
-References:
+Traditional ABC mapping relies on **static heuristics (dominance + cut-size limits)**, which:
 
-[1] L. Fan and C. Wu, "FPGA technology mapping with adaptive gate decompostion", ACM/SIGDA FPGA International Symposium on FPGAs, 2023. 
+* Retain many low-quality cuts
+* Increase runtime due to exponential candidate growth
 
-## Compiling:
+This project replaces those heuristics with a **data-driven ML model** that dynamically predicts cut quality and prunes suboptimal candidates during mapping.
 
-To compile ABC as a binary, download and unzip the code, then type `make`.
-To compile ABC as a static library, type `make libabc.a`.
+---
 
-When ABC is used as a static library, two additional procedures, `Abc_Start()` 
-and `Abc_Stop()`, are provided for starting and quitting the ABC framework in 
-the calling application. A simple demo program (file src/demo.c) shows how to 
-create a stand-alone program performing DAG-aware AIG rewriting, by calling 
-APIs of ABC compiled as a static library.
+## 🎯 Key Contributions
 
-To build the demo program
+* 🔍 **ML-based cut filtering inside ABC mapper (C-level integration)**
+* ⚡ **Up to ~53% reduction in candidate cuts**
+* 📉 **Maintains QoR parity (~0.003% deviation)**
+* 🧠 Lightweight **Random Forest model transpiled to C**
+* ⚙️ Fully integrated into ABC runtime (no external dependencies)
 
- * Copy demo.c and libabc.a to the working directory
- * Run `gcc -Wall -g -c demo.c -o demo.o`
- * Run `g++ -g -o demo demo.o libabc.a -lm -ldl -lreadline -lpthread`
+---
 
-To run the demo program, give it a file with the logic network in AIGER or BLIF. For example:
+## 🧠 Core Idea
 
-    [...] ~/abc> demo i10.aig
-    i10          : i/o =  257/  224  lat =    0  and =   2396  lev = 37
-    i10          : i/o =  257/  224  lat =    0  and =   1851  lev = 35
-    Networks are equivalent.
-    Reading =   0.00 sec   Rewriting =   0.18 sec   Verification =   0.41 sec
+Instead of evaluating all possible cuts:
 
-The same can be produced by running the binary in the command-line mode:
+> Use ML to predict whether a cut is **worth exploring** before expensive mapping steps.
 
-    [...] ~/abc> ./abc
-    UC Berkeley, ABC 1.01 (compiled Oct  6 2012 19:05:18)
-    abc 01> r i10.aig; b; ps; b; rw -l; rw -lz; b; rw -lz; b; ps; cec
-    i10          : i/o =  257/  224  lat =    0  and =   2396  lev = 37
-    i10          : i/o =  257/  224  lat =    0  and =   1851  lev = 35
-    Networks are equivalent.
+Each candidate cut is classified into:
 
-or in the batch mode:
+* ❌ Poor → Discard immediately
+* ⚠️ Average → Conditional use
+* ✅ Good → Always keep
 
-    [...] ~/abc> ./abc -c "r i10.aig; b; ps; b; rw -l; rw -lz; b; rw -lz; b; ps; cec"
-    ABC command line: "r i10.aig; b; ps; b; rw -l; rw -lz; b; rw -lz; b; ps; cec".
-    i10          : i/o =  257/  224  lat =    0  and =   2396  lev = 37
-    i10          : i/o =  257/  224  lat =    0  and =   1851  lev = 35
-    Networks are equivalent.
+---
 
-## Compiling as C or C++
+## 🏗️ System Architecture
 
-The current version of ABC can be compiled with C compiler or C++ compiler.
+```
+ABC Mapper Flow
+      │
+      ▼
+Cut Enumeration (baseline)
+      │
+      ▼
+Feature Extraction (9 features per cut)
+      │
+      ▼
+ML Inference (Random Forest → C code)
+      │
+      ▼
+Cut Filtering (remove poor cuts)
+      │
+      ▼
+Reduced Candidate Set
+      │
+      ▼
+Delay + Area Optimization
+```
 
- * To compile as C code (default): make sure that `CC=gcc` and `ABC_NAMESPACE` is not defined.
- * To compile as C++ code without namespaces: make sure that `CC=g++` and `ABC_NAMESPACE` is not defined.
- * To compile as C++ code with namespaces: make sure that `CC=g++` and `ABC_NAMESPACE` is set to
-   the name of the requested namespace. For example, add `-DABC_NAMESPACE=xxx` to OPTFLAGS.
+---
 
-## Building a shared library
+## ⚙️ ML Model Details
 
- * Compile the code as position-independent by adding `ABC_USE_PIC=1`.
- * Build the `libabc.so` target: 
- 
-     make ABC_USE_PIC=1 libabc.so
+### Model Type
 
-## Bug reporting:
+* **Random Forest Classifier (15 trees)**
 
-Please try to reproduce all the reported bugs and unexpected features using the latest 
-version of ABC available from https://github.com/berkeley-abc/abc
+### Why Random Forest?
 
-If the bug still persists, please provide the following information:    
+* Fast inference (just `if-else` branches)
+* Easily transpiled into C
+* No runtime dependencies
+* Suitable for **millions of evaluations**
 
- 1. ABC version (when it was downloaded from GitHub)
- 1. Linux distribution and version (32-bit or 64-bit)
- 1. The exact command-line and error message when trying to run the tool
- 1. The output of the `ldd` command run on the exeutable (e.g. `ldd abc`).
- 1. Versions of relevant tools or packages used.
+### Input Features (per cut)
 
+* Number of leaves (**most important**)
+* Max/avg logic depth
+* Fanout statistics
+* Truth table characteristics
+* Structural metrics
 
-## Troubleshooting:
+### Output
 
- 1. If compilation does not start because of the cyclic dependency check, 
-try touching all files as follows: `find ./ -type f -exec touch "{}" \;`
- 1. If compilation fails because readline is missing, install 'readline' library or
-compile with `make ABC_USE_NO_READLINE=1`
- 1. If compilation fails because pthreads are missing, install 'pthread' library or
-compile with `make ABC_USE_NO_PTHREADS=1`
-    * See http://sourceware.org/pthreads-win32/ for pthreads on Windows
-    * Precompiled DLLs are available from ftp://sourceware.org/pub/pthreads-win32/dll-latest
- 1. If compilation fails in file "src/base/main/libSupport.c", try the following:
-    * Remove "src/base/main/libSupport.c" from "src/base/main/module.make"
-    * Comment out calls to `Libs_Init()` and `Libs_End()` in "src/base/main/mainInit.c"
- 1. On some systems, readline requires adding '-lcurses' to Makefile.
+* 3-class classification:
 
-The following comment was added by Krish Sundaresan:
+  * `0 → Poor`
+  * `1 → Average`
+  * `2 → Good`
 
-"I found that the code does compile correctly on Solaris if gcc is used (instead of 
-g++ that I was using for some reason). Also readline which is not available by default 
-on most Sol10 systems, needs to be installed. I downloaded the readline-5.2 package 
-from sunfreeware.com and installed it locally. Also modified CFLAGS to add the local 
-include files for readline and LIBS to add the local libreadline.a. Perhaps you can 
-add these steps in the readme to help folks compiling this on Solaris."
+---
 
-The following tutorial is kindly offered by Ana Petkovska from EPFL:
-https://www.dropbox.com/s/qrl9svlf0ylxy8p/ABC_GettingStarted.pdf
+## 📊 Training Pipeline
 
-## Final remarks:
+### Dataset
 
-Unfortunately, there is no comprehensive regression test. Good luck!                                
+* ~3.7 million cuts from ~297 circuits
 
-This system is maintained by Alan Mishchenko <alanmi@berkeley.edu>. Consider also 
-using ZZ framework developed by Niklas Een: https://bitbucket.org/niklaseen/abc-zz (or https://github.com/berkeley-abc/abc-zz)
+### Labels
+
+Synthetic labels derived from:
+
+* Dominance heuristic
+* Cut size threshold
+* Random balancing (to avoid bias)
+
+### Training
+
+* Framework: **Python (scikit-learn)**
+* Class imbalance handled via:
+
+  * `class_weight = balanced`
+
+### Model Export
+
+* Trained model → **transpiled into C header (`ml_inference.h`)**
+* Each tree → nested `if-else` logic
+
+---
+
+## 🔧 Integration into ABC
+
+### Modified Components
+
+* `mapperCut.c` → ML-based filtering
+* `mapperCore.c` → runtime mode control
+* `ml_cut.c / ml_cut.h` → inference wrapper
+* `ml_inference.h` → transpiled RF model
+
+### Execution Modes
+
+| Mode | Description            |
+| ---- | ---------------------- |
+| 0    | Baseline (no ML)       |
+| 1    | Conservative filtering |
+| 2    | Balanced filtering     |
+| 3    | Aggressive filtering   |
+
+Set using:
+
+```bash
+export ML_MODE=2
+```
+
+---
+
+## 📈 Results
+
+### 🔹 Cut Reduction
+
+| Mode | Reduction |
+| ---- | --------- |
+| 1    | ~31%      |
+| 2    | ~41%      |
+| 3    | ~53%      |
+
+---
+
+### 🔹 CPU Time Behavior
+
+* Total runtime: **~1.15× slower** (due to ML inference)
+* Post-filter mapping: **~0.96× faster**
+
+👉 Insight:
+
+* ML adds **front-end overhead**
+* But reduces **back-end complexity**
+
+---
+
+### 🔹 QoR (Area/Delay)
+
+* ~97.6% cases → **no change**
+* Average degradation: **~0.003%**
+* Some cases even show **improvement**
+
+---
+
+## 🧪 How to Run
+
+### 1. Clone ABC + Project
+
+```bash
+git clone https://github.com/AYUSHSHARMA9817/abc-ml-project.git
+cd abc-ml-project
+```
+
+### 2. Build
+
+```bash
+make
+```
+
+### 3. Run Mapping
+
+```bash
+export ML_MODE=2   # choose mode (0–3)
+./abc -c "read_blif <file>; map; print_stats"
+```
+
+---
+
+## 📂 Project Structure
+
+```
+├── src/
+│   ├── mapperCut.c        # ML filtering logic
+│   ├── mapperCore.c       # mode control
+│   ├── ml_cut.c/h         # inference bridge
+│   └── ml_inference.h     # transpiled RF model
+│
+├── scripts/
+│   ├── train_model.py     # ML training
+│   ├── run_experiments.sh # benchmarking
+│   └── plot_aggregate.py  # visualization
+│
+├── data/
+│   ├── cuts_all_features.csv
+│   └── cuts_survivors.csv
+│
+└── results/
+    ├── logs/
+    └── plots/
+```
+
+---
+
+## 🔍 Technical Insights
+
+### Why ML Works Here
+
+* Mapping cost is dominated by **search space size**
+* Many cuts are structurally valid but **useless**
+* ML learns **hidden structural patterns** beyond heuristics
+
+---
+
+### Trade-off Analysis
+
+| Aspect      | Baseline | ML-Based        |
+| ----------- | -------- | --------------- |
+| Cut Count   | High     | Low             |
+| CPU Time    | Lower    | Slightly Higher |
+| QoR         | Optimal  | Same            |
+| Scalability | Limited  | Better          |
+
+---
+
+## ⚠️ Limitations
+
+* Synthetic labels (not true optimal mapping outcomes)
+* Slight runtime overhead
+* Gains more visible on **large circuits (>100K nodes)**
+
+---
+
+## 🚀 Future Work
+
+* Replace synthetic labels with **true optimal labels**
+* Use **graph neural networks (GNNs)** for richer features
+* Adaptive thresholds per circuit
+* Evaluate on **industrial-scale designs**
+
+---
+
+## 🤝 Contributing
+
+Feel free to:
+
+* Improve model accuracy
+* Optimize inference speed
+* Extend feature engineering
+
+---
