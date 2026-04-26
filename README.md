@@ -1,13 +1,3 @@
-Here is a **clean, professional README.md** for your project, combining:
-
-* your **report (ML-guided cut filtering)**
-* expected **assignment requirements**
-* and a **production-style ML + systems documentation structure**
-
-You can directly copy this into your repo.
-
----
-
 # 🚀 ML-Guided ASIC Technology Mapping (ABC Integration)
 
 ## 📌 Overview
@@ -210,31 +200,6 @@ make
 ```bash
 export ML_MODE=2   # choose mode (0–3)
 ./abc -c "read_blif <file>; map; print_stats"
-```
-
----
-
-## 📂 Project Structure
-
-```
-├── src/
-│   ├── mapperCut.c        # ML filtering logic
-│   ├── mapperCore.c       # mode control
-│   ├── ml_cut.c/h         # inference bridge
-│   └── ml_inference.h     # transpiled RF model
-│
-├── scripts/
-│   ├── train_model.py     # ML training
-│   ├── run_experiments.sh # benchmarking
-│   └── plot_aggregate.py  # visualization
-│
-├── data/
-│   ├── cuts_all_features.csv
-│   └── cuts_survivors.csv
-│
-└── results/
-    ├── logs/
-    └── plots/
 ```
 
 ---
