@@ -225,6 +225,19 @@ ABC_PRT( "Time", Abc_Clock() - clk );
     // print the arrival times of the latest outputs
     if ( p->fVerbose )
         Map_MappingPrintOutputArrivals( p );
+
+    // ML dataset: append final network QoR for this heuristic pass
+    {
+        char * heur = getenv("ABC_CUT_HEURISTIC");
+        const char * heur_name = heur ? heur : "dominance";
+        extern int g_MapCutsKept;
+        FILE * fQoR = fopen("cuts_qor.csv", "a");
+        if (fQoR) {
+            fprintf(fQoR, "%s,%f,%f,%d\n", heur_name, p->AreaFinal ? p->AreaFinal : p->AreaBase, p->fRequiredGlo, g_MapCutsKept);
+            fclose(fQoR);
+        }
+    }
+
     return 1;
 }
 ABC_NAMESPACE_IMPL_END

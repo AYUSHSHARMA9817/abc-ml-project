@@ -40,12 +40,15 @@ ABC_NAMESPACE_IMPL_START
   SeeAlso     []
 
 ***********************************************************************/
+int g_MapCutIdCounter = 0;
+
 Map_Cut_t * Map_CutAlloc( Map_Man_t * p )
 {
     Map_Cut_t * pCut;
     Map_Match_t * pMatch;
     pCut = (Map_Cut_t *)Extra_MmFixedEntryFetch( p->mmCuts );
     memset( pCut, 0, sizeof(Map_Cut_t) );
+    pCut->cut_id = g_MapCutIdCounter++;
 
     pMatch = pCut->M;
     pMatch->AreaFlow       = MAP_FLOAT_LARGE; // unassigned

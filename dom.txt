@@ -1,0 +1,2 @@
+======== ABC command line "read_blif blif_files/adder.blif; strash; read_genlib genlib.genlib; map;"
+Hierarchy reader converted 8 instances of blackboxes.

@@ -17,6 +17,7 @@
 ***********************************************************************/
 
 #include "mapperInt.h"
+#include "slap_inference.h"
 
 ABC_NAMESPACE_IMPL_START
 
@@ -176,6 +177,19 @@ void Map_MappingCuts( Map_Man_t * p )
     Map_Node_t * pNode;
     int nCuts, nNodes, i;
     abctime clk = Abc_Clock();
+
+    FILE * fAll, * fSurv, * fQoR;
+    extern int g_MapCutIdCounter;
+    extern int g_MapCutsKept;
+    g_MapCutIdCounter = 0;
+    g_MapCutsKept = 0;
+    fAll = fopen("cuts_all_features.csv", "w");
+    fprintf(fAll, "node_id,cut_id,nLeaves,nVolume,max_level,avg_level,random_val,uTruth,uTruth_popcount,max_leaf_refs,max_arrival\n");
+    fclose(fAll);
+    fSurv = fopen("cuts_survivors.csv", "w");
+    fprintf(fSurv, "node_id,cut_id,survives_dominance,survives_volume,survives_random\n");
+    fclose(fSurv);
+
     // set the elementary cuts for the PI variables
     assert( p->nVarsMax > 1 && p->nVarsMax < 7 );
     for ( i = 0; i < p->nInputs; i++ )
@@ -222,6 +236,81 @@ void Map_MappingCuts( Map_Man_t * p )
   SeeAlso     []
 
 ***********************************************************************/
+
+void Map_CutMLDump( Map_Man_t * pMan, Map_Node_t * pNode )
+{
+    Map_Cut_t * pCut, * pTemp;
+    FILE * fAll = fopen("cuts_all_features.csv", "a");
+    FILE * fSurv = fopen("cuts_survivors.csv", "a");
+    int i, k, is_dominated;
+    int surv_dominance, surv_volume, surv_random;
+            
+    for ( pCut = pNode->pCuts; pCut; pCut = pCut->pNext )
+    {
+        // 1. Calculate features
+        int nLeaves = pCut->nLeaves;
+        int max_level = 0;
+        int sum_level = 0;
+        int max_leaf_refs = 0;
+        float max_arrival = 0.0f;
+        for ( i = 0; i < nLeaves; i++ ) {
+            int lvl = pCut->ppLeaves[i]->Level;
+            sum_level += lvl;
+            if ( lvl > max_level ) max_level = lvl;
+            
+            int refs = pCut->ppLeaves[i]->nRefs;
+            if (refs > max_leaf_refs) max_leaf_refs = refs;
+            
+            float arr = pCut->ppLeaves[i]->tArrival[0].Worst;
+            if (arr > max_arrival) max_arrival = arr;
+        }
+        float avg_level = nLeaves ? (float)sum_level / nLeaves : 0;
+        int random_val = rand() % 1000;
+        
+        unsigned uTruth = pCut->uTruth;
+        int uTruth_popcount = __builtin_popcount(uTruth);
+        
+        // Use an approximate volume based on nLeaves for now.
+        int volume_est = (int)pCut->nVolume; 
+        
+        fprintf(fAll, "%d,%d,%d,%d,%d,%.2f,%d,%u,%d,%d,%f\n", 
+                pNode->Num, pCut->cut_id, nLeaves, volume_est, max_level, avg_level, random_val, 
+                uTruth, uTruth_popcount, max_leaf_refs, max_arrival);
+        
+        // 3. Simulate Dominance 
+        is_dominated = 0;
+        for ( pTemp = pNode->pCuts; pTemp; pTemp = pTemp->pNext )
+        {
+            if ( pTemp == pCut ) continue;
+            // check if every node in pTemp is contained in pCut
+            for ( i = 0; i < pTemp->nLeaves; i++ )
+            {
+                for ( k = 0; k < pCut->nLeaves; k++ )
+                    if ( pTemp->ppLeaves[i] == pCut->ppLeaves[k] )
+                        break;
+                if ( k == pCut->nLeaves ) break;
+            }
+            if ( i == pTemp->nLeaves )
+            {
+                is_dominated = 1;
+                break;
+            }
+        }
+        surv_dominance = !is_dominated;
+        
+        // Simulate Volume filter
+        surv_volume = (nLeaves <= 4); 
+        
+        // Simulate Random (keep roughly 50% or keep elementary)
+        surv_random = (nLeaves == 1) || (random_val > 500);
+        
+        fprintf(fSurv, "%d,%d,%d,%d,%d\n", pNode->Num, pCut->cut_id, surv_dominance, surv_volume, surv_random);
+    }
+    
+    fclose(fAll);
+    fclose(fSurv);
+}
+
 Map_Cut_t * Map_CutCompute( Map_Man_t * p, Map_CutTable_t * pTable, Map_Node_t * pNode )
 {
     Map_Node_t * pTemp;
@@ -260,6 +349,9 @@ Map_Cut_t * Map_CutCompute( Map_Man_t * p, Map_CutTable_t * pTable, Map_Node_t *
     pCut->pNext = pList;
     // set at the node
     pNode->pCuts = pCut;
+    // Dump features and simulate filters BEFORE removing dominated cuts
+    extern void Map_CutMLDump( Map_Man_t * pMan, Map_Node_t * pNode );
+    Map_CutMLDump( p, pNode );
     // remove the dominated cuts
     Map_CutFilter( p, pNode );
     // set the phase correctly
@@ -292,43 +384,72 @@ Map_Cut_t * Map_CutCompute( Map_Man_t * p, Map_CutTable_t * pTable, Map_Node_t *
   SeeAlso     []
 
 ***********************************************************************/
+
+int g_MapCutsKept = 0;
+
 void Map_CutFilter( Map_Man_t * p, Map_Node_t * pNode )
 { 
     Map_Cut_t * pTemp, * pPrev, * pCut, * pCut2;
     int i, k, Counter;
+    
+    char * heur = getenv("ABC_CUT_HEURISTIC");
+    int filter_mode = 0;
+    if (heur) {
+        if (strcmp(heur, "volume") == 0) filter_mode = 1;
+        else if (strcmp(heur, "random") == 0) filter_mode = 2;
+    }
 
     Counter = 0;
     pPrev = pNode->pCuts;
+    g_MapCutsKept++; // count the trivial elementary cut
+
     Map_ListForEachCutSafe( pNode->pCuts->pNext, pCut, pCut2 )
     {
-        // go through all the previous cuts up to pCut
-        for ( pTemp = pNode->pCuts->pNext; pTemp != pCut; pTemp = pTemp->pNext )
-        {
-            // check if every node in pTemp is contained in pCut
-            for ( i = 0; i < pTemp->nLeaves; i++ )
+        int keep = 0;
+        
+        if (pNode->pCuts->pNext == pCut) {
+            // ALWAYS keep the first non-trivial cut to satisfy ABC's mapping invariant!
+            keep = 1;
+        } else if (filter_mode == 0) {
+            // go through all the previous cuts up to pCut
+            for ( pTemp = pNode->pCuts->pNext; pTemp != pCut; pTemp = pTemp->pNext )
             {
-                for ( k = 0; k < pCut->nLeaves; k++ )
-                    if ( pTemp->ppLeaves[i] == pCut->ppLeaves[k] )
+                // check if every node in pTemp is contained in pCut
+                for ( i = 0; i < pTemp->nLeaves; i++ )
+                {
+                    for ( k = 0; k < pCut->nLeaves; k++ )
+                        if ( pTemp->ppLeaves[i] == pCut->ppLeaves[k] )
+                            break;
+                    if ( k == pCut->nLeaves ) // node i in pTemp is not contained in pCut
                         break;
-                if ( k == pCut->nLeaves ) // node i in pTemp is not contained in pCut
+                }
+                if ( i == pTemp->nLeaves ) // every node in pTemp is contained in pCut
+                {
+                    Counter++;
                     break;
+                }
             }
-            if ( i == pTemp->nLeaves ) // every node in pTemp is contained in pCut
-            {
-                Counter++;
-                break;
-            }
+            keep = (pTemp == pCut);
+        } else if (filter_mode == 1) { // volume heuristic
+            keep = (pCut->nLeaves <= 4);
+        } else if (filter_mode == 2) { // random heuristic
+            // Use stable random feature for consistency
+            int random_val = pCut->cut_id % 1000;
+            keep = (pCut->nLeaves == 1) || (random_val > 500);
         }
-        if ( pTemp != pCut ) // pTemp contain pCut
+
+        if ( !keep ) 
         {
             pPrev->pNext = pCut->pNext;  // skip pCut
             // recycle pCut
             Map_CutFree( p, pCut );
         }
         else 
+        {
             pPrev = pCut; 
+            g_MapCutsKept++;
+        }
     }
-//  printf( "Dominated = %3d. \n", Counter );
 }
 
 /**Function*************************************************************

@@ -272,6 +272,7 @@ struct Map_CutStruct_t_
     char                nVolume;       // the volume of this cut
     char                fMark;         // the mark to denote visited cut
     char                Phase;         // the mark to denote complemented cut
+    int                 cut_id;        // unique cut id for ML logging
     Map_Match_t         M[2];          // the matches for positive/negative phase
 };
 

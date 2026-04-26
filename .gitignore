@@ -62,4 +62,9 @@ tags
 
 /cmake
 /cscope
-abc.history
+abc.historyresults/
+venv/
+pdf_venv/
+blif_files/
+
+results/

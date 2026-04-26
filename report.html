@@ -1,0 +1,113 @@
+<h1
+id="machine-learning-in-abc-mapper-random-forest-implementation-report">Machine
+Learning in ABC Mapper: Random Forest Implementation Report</h1>
+<p>This report outlines the recent modifications made to the ABC
+synthesis tool’s mapping phase to integrate an ML-based heuristic
+(specifically, a small Multi-Class Random Forest classifier) for
+determining cut survival during technology mapping.</p>
+<h2 id="what-we-did">1. What We Did</h2>
+<p>We extended the traditional ABC <code>map</code> command (technology
+mapper) to dynamically select which cuts are retained dynamically using
+Machine Learning instead of using standard static heuristics like
+absolute dominance or constant cut volume limitations.</p>
+<p>To achieve this: - We modified the internal representation of cuts to
+log various cut topology features (size, max depth, logic level, etc.)
+and labeled them based on whether they would “survive” under strict
+algorithmic structural heuristics (dominance and volume). - We generated
+and captured testing data using varying <code>ABC_CUT_HEURISTIC</code>
+runs. - We designed a lightweight Python training pipeline exclusively
+focusing on a Random Forest classifier. - We directly transformed the
+small trained Random Forest decision trees into inference code
+(<code>ml_inference.h</code>), so that ABC natively executes ML
+predictions at C-level without heavy external ML inference dependencies
+(like TensorFlow or ONNX runtime).</p>
+<h2 id="dataset-collection-heuristics-used">2. Dataset Collection &amp;
+Heuristics Used</h2>
+<p>The dataset was gathered by executing ABC across multiple testbench
+designs (<code>.blif</code> files in <code>blif_files/</code>) by
+explicitly executing <code>run_experiments.sh</code>.</p>
+<p>To gather supervised training labels and feature profiles, we
+initially leveraged three traditional “score” heuristics: 1.
+<strong>Dominance</strong>: Prioritizes preserving cuts if they are not
+totally dominated structurally by other identical subsets of the logic
+cone. Handled using logical subset checking. 2. <strong>Volume</strong>:
+Handled cuts heavily based on overall logical breadth; specifically
+simulating survival if the cut has 4 or fewer leaf nodes
+(<code>nLeaves &lt;= 4</code>). 3. <strong>Random</strong>: An arbitrary
+parity-based heuristic to keep ~50% random cuts and trivially simple
+1-leaf cuts. Used purely as a comparative baseline.</p>
+<p>For each mapping node, <code>cuts_all_features.csv</code> dumped
+extracted model features, and <code>cuts_survivors.csv</code> boolean
+outcomes based on the heuristics above. We combined the survivability
+values to construct labels reflecting the relative “quality” of a
+cut.</p>
+<h2 id="features-extracted-x">3. Features Extracted
+(<code>X</code>)</h2>
+<p>We generated the header logic by extracting specific mathematical and
+topological features per cut. The feature vector array
+(<code>float features[9]</code>) includes: - <code>nLeaves</code>: Total
+number of leaf variables. - <code>nVolume</code>: An approximate
+measurement of the internal mapping subset logic volume. -
+<code>max_level</code>: Maximum circuit propagation depth. -
+<code>avg_level</code>: Aggregated average depth across all leaf inputs.
+- <code>random_val</code>: Baseline uniform distribution values appended
+for normalization/validation parity checks. - <code>uTruth</code>: The
+raw truth table signature (integer). - <code>uTruth_popcount</code>:
+Structural bit-count complexity of the boolean truth expression. -
+<code>max_leaf_refs</code>: Total external graph references per leaf
+variable. - <code>max_arrival</code>: The locally estimated
+worst-latency signal arrival times.</p>
+<h2 id="modeling-strategy-and-training">4. Modeling Strategy and
+Training</h2>
+<p>We opted explicitly for a <strong>Multi-Class Random Forest
+Classifier</strong> implemented via Python’s <code>scikit-learn</code>
+taking into account the balance between rapid inference cycle execution
+in C natively vs model complexity.</p>
+<p><strong>Model Particulars:</strong> - <strong>Estimators
+(<code>n_estimators</code>)</strong>: 15 decision trees. - <strong>Depth
+(<code>max_depth</code>)</strong>: Strict ceiling of 8 steps to enforce
+quick bounded runtime. - <strong>Classes</strong>: 3 output classes
+(<code>0=Poor</code>, <code>1=Average</code>, <code>2=Good</code>),
+synthesized respectively by blending dominance logic and maximum volume
+sizes (<code>score = s_dom + s_vol</code>). Training leveraged
+<code>class_weight='balanced'</code>.</p>
+<p>During execution, <code>train_model.py</code> reads the feature
+dataset, trains <code>RandomForestClassifier</code>, measures
+classification accuracy against the targets, and recursively translates
+each estimator tree structure directly through an abstract syntax
+translator block into inline <code>if/else</code> boundaries
+encapsulated in standard <code>C</code> functions.</p>
+<h2 id="main-extracted-base-modifications">5. Main Extracted Base
+Modifications</h2>
+<p>Deep structural interventions were introduced inside
+<code>src/map/mapper/</code>:</p>
+<ul>
+<li><strong><code>mapperCut.c</code></strong>: We inserted a feature
+extraction and dataset logging routine, <code>Map_CutMLDump</code>,
+which computes max levels, total arrivals, logic signatures, etc., right
+<em>before</em> standard native dominance filtering
+(<code>Map_CutFilter</code>). We modified <code>Map_CutFilter</code>’s
+main routine to allow <code>ABC_CUT_HEURISTIC</code> overrides
+(e.g. bypassing filtering constraints and strictly allowing Volume or
+Random filtering based on runtime arguments).</li>
+<li><strong><code>mapperCore.c</code></strong>: Captured exact end-stage
+metrics upon mapping termination by storing final area
+(<code>AreaFinal</code>), delay (<code>fRequiredGlo</code>), and
+tracking exactly how many total mapping permutations naturally survived
+filtering logic into <code>cuts_qor.csv</code>.</li>
+<li><strong><code>mapperInt.h</code></strong>: Modified
+<code>Map_CutStruct_t_</code> internal framework to contain an intrinsic
+mapping string integer <code>cut_id</code> per cut structure layout to
+natively cross-reference data across our multi-pass data collection
+loops reliably.</li>
+<li><strong><code>mapperCutUtils.c</code></strong>: Dynamically
+allocated sequential unique <code>cut_id</code> properties inside memory
+pool management via <code>Map_CutAlloc</code>.</li>
+</ul>
+<hr />
+<p><strong>Summary</strong>: We substituted hardcoded technology map
+pruning paths with a robust, data-conscious mechanism mapping feature
+relationships. By employing small-scale, balanced Random Forest logic
+integrated at the ground-level core logic (via C-header injection
+strategy), ABC accurately balances complex graph traversal while keeping
+mapping compute operations constrained.</p>
